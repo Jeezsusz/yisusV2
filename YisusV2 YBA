@@ -8,7 +8,7 @@ local PhysicsService = game:GetService("PhysicsService")
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 local MethionSH_Env = type(getgenv) == "function" and getgenv() or _G
-local RELOAD_SCRIPT_RAW_URL = "https://raw.githubusercontent.com/Jeezsusz/yisusV2/refs/heads/main/YisusV2%20YBA"
+local RELOAD_SCRIPT_RAW_URL = "https://raw.githubusercontent.com/Jeezsusz/yisusV2/9f829a7181802027194623c59505981516b02402/YisusV2%20YBA"
 local MAIN_AUTOSTART = MethionSH_Env.__MethionSHAutoStart == true
 if MAIN_AUTOSTART then MethionSH_Env.__MethionSHAutoStart = nil end
 
@@ -4340,6 +4340,7 @@ end
 local PlayerInfo = {}
 
 function PlayerInfo.cleanName(s)
+    if s == nil then return "" end
     return string.lower(string.gsub(s, "%s+", ""))
 end
 
@@ -13676,6 +13677,235 @@ return function(Window, player, QuestTab, config)
 			else Window:Notify("Skills", "Skill learning failed: " .. tostring(err), 5) end
 		end)
 	end, "Send learning requests for the known stand and spec skills.", "graduation-cap")
+
+	-- ============ Disable 3D rendering (AFK black screen + status panel) ============
+	local Lighting = game:GetService("Lighting")
+	local NoRender3D = { enabled = false }
+
+	local function destroyNoRenderGui()
+		local holders = {}
+		pcall(function() if type(gethui) == "function" then holders[#holders + 1] = gethui() end end)
+		pcall(function() holders[#holders + 1] = game:GetService("CoreGui") end)
+		pcall(function() holders[#holders + 1] = player end)
+		for _, holder in ipairs(holders) do
+			pcall(function()
+				local old = holder:FindFirstChild("YisusV2_NoRender")
+				if old then old:Destroy() end
+			end)
+		end
+	end
+
+	local function countLuckyArrows()
+		local count = 0
+		local backpack = player:FindFirstChildOfClass("Backpack")
+		if backpack then
+			for _, tool in ipairs(backpack:GetChildren()) do
+				if tool:IsA("Tool") and tool.Name == "Lucky Arrow" then count = count + 1 end
+			end
+		end
+		local character = player.Character
+		if character then
+			for _, tool in ipairs(character:GetChildren()) do
+				if tool:IsA("Tool") and tool.Name == "Lucky Arrow" then count = count + 1 end
+			end
+		end
+		return count
+	end
+
+	local function commaNumber(value)
+		local text = tostring(math.floor(tonumber(value) or 0))
+		local formatted = text:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+		return (formatted:gsub("^,", ""))
+	end
+
+	-- Keep the YisusV2 window renderable above the black screen so the toggle stays reachable.
+	local function raiseScriptWindow()
+		pcall(function()
+			local coreGui = game:GetService("CoreGui")
+			local windowGui = coreGui and coreGui:FindFirstChild("YisusV2")
+			if windowGui and windowGui:IsA("ScreenGui") and (windowGui.DisplayOrder or 0) < 1000000 then
+				windowGui.DisplayOrder = 1000000
+			end
+		end)
+	end
+
+	function NoRender3D.build()
+		destroyNoRenderGui()
+		local holder
+		pcall(function() if type(gethui) == "function" then holder = gethui() end end)
+		if not holder then
+			pcall(function() holder = game:GetService("CoreGui") end)
+		end
+		if not holder then
+			holder = player:FindFirstChild("PlayerGui")
+		end
+
+		local gui = Instance.new("ScreenGui")
+		gui.Name = "YisusV2_NoRender"
+		gui.IgnoreGuiInset = true
+		gui.ResetOnSpawn = false
+		gui.DisplayOrder = 500000
+		gui.Parent = holder
+
+		local blackout = Instance.new("Frame")
+		blackout.Name = "Blackout"
+		blackout.Size = UDim2.fromScale(1, 1)
+		blackout.BackgroundColor3 = Color3.new(0, 0, 0)
+		blackout.BorderSizePixel = 0
+		blackout.ZIndex = 1
+		blackout.Parent = gui
+
+		local panel = Instance.new("Frame")
+		panel.Name = "AFKPanel"
+		panel.AnchorPoint = Vector2.new(0.5, 0.5)
+		panel.Position = UDim2.fromScale(0.5, 0.5)
+		panel.Size = UDim2.fromOffset(280, 150)
+		panel.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
+		panel.BackgroundTransparency = 0.35
+		panel.BorderSizePixel = 0
+		panel.ZIndex = 5
+		panel.Parent = gui
+
+		local panelCorner = Instance.new("UICorner")
+		panelCorner.CornerRadius = UDim.new(0, 10)
+		panelCorner.Parent = panel
+
+		local panelStroke = Instance.new("UIStroke")
+		panelStroke.Color = Color3.fromRGB(224, 224, 224)
+		panelStroke.Transparency = 0.4
+		panelStroke.Thickness = 1
+		panelStroke.Parent = panel
+
+		local function makeLabel(y, text, isTitle)
+			local label = Instance.new("TextLabel")
+			label.BackgroundTransparency = 1
+			label.Position = UDim2.new(0, 14, 0, y)
+			label.Size = UDim2.new(1, -28, 0, isTitle and 28 or 20)
+			label.Font = isTitle and Enum.Font.GothamBold or Enum.Font.Gotham
+			label.TextSize = isTitle and 16 or 14
+			label.TextColor3 = isTitle and Color3.fromRGB(224, 224, 224) or Color3.fromRGB(205, 205, 205)
+			label.Text = text
+			label.ZIndex = 6
+			label.Parent = panel
+			return label
+		end
+
+		makeLabel(10, "YisusV2 AFK FARMING", true)
+		NoRender3D.labels = {
+			item = makeLabel(46, "Item count: ...", false),
+			money = makeLabel(72, "Money: ...", false),
+			lucky = makeLabel(98, "Lucky Arrows: ...", false),
+		}
+
+		NoRender3D.gui = gui
+		raiseScriptWindow()
+	end
+
+	function NoRender3D.apply()
+		NoRender3D.restore = {
+			Brightness = Lighting.Brightness,
+			GlobalShadows = Lighting.GlobalShadows,
+			FogEnd = Lighting.FogEnd,
+			Ambient = Lighting.Ambient,
+			OutdoorAmbient = Lighting.OutdoorAmbient,
+		}
+		NoRender3D.postEffects = {}
+		for _, effect in ipairs(Lighting:GetChildren()) do
+			if effect:IsA("PostEffect") then
+				NoRender3D.postEffects[effect] = effect.Enabled
+				effect.Enabled = false
+			end
+		end
+		Lighting.Brightness = 0
+		Lighting.GlobalShadows = false
+		Lighting.FogEnd = 0
+		Lighting.Ambient = Color3.new(0, 0, 0)
+		Lighting.OutdoorAmbient = Color3.new(0, 0, 0)
+		pcall(function()
+			NoRender3D.quality = settings().Rendering.QualityLevel
+			settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+		end)
+	end
+
+	function NoRender3D.revert()
+		local restore = NoRender3D.restore
+		if restore then
+			pcall(function()
+				Lighting.Brightness = restore.Brightness
+				Lighting.GlobalShadows = restore.GlobalShadows
+				Lighting.FogEnd = restore.FogEnd
+				Lighting.Ambient = restore.Ambient
+				Lighting.OutdoorAmbient = restore.OutdoorAmbient
+			end)
+			NoRender3D.restore = nil
+		end
+		for effect, state in pairs(NoRender3D.postEffects or {}) do
+			pcall(function()
+				if effect and effect.Parent then effect.Enabled = state end
+			end)
+		end
+		NoRender3D.postEffects = nil
+		if NoRender3D.quality then
+			pcall(function() settings().Rendering.QualityLevel = NoRender3D.quality end)
+			NoRender3D.quality = nil
+		end
+	end
+
+	function NoRender3D.startLoop()
+		task.spawn(function()
+			while NoRender3D.enabled and NoRender3D.labels and NoRender3D.labels.item.Parent do
+				pcall(function()
+					-- Reassert the black lighting every tick: the game's day/night sync
+					-- rewrites Lighting on a slow cadence and would undo a one-shot apply.
+					Lighting.Brightness = 0
+					Lighting.GlobalShadows = false
+					Lighting.FogEnd = 0
+					Lighting.Ambient = Color3.new(0, 0, 0)
+					Lighting.OutdoorAmbient = Color3.new(0, 0, 0)
+					for _, effect in ipairs(Lighting:GetChildren()) do
+						if effect:IsA("PostEffect") and effect.Enabled then
+							effect.Enabled = false
+						end
+					end
+					if NoRender3D.quality then
+						pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
+					end
+					local itemCount = 0
+					if type(config.getItemCount) == "function" then
+						local ok, value = pcall(config.getItemCount)
+						if ok and type(value) == "number" then itemCount = value end
+					end
+					local moneyValue = tonumber(PlayerMoney.Value) or 0
+					NoRender3D.labels.item.Text = ("Item count: %d"):format(itemCount)
+					NoRender3D.labels.money.Text = "Money: $" .. commaNumber(moneyValue)
+					NoRender3D.labels.lucky.Text = ("Lucky Arrows: %d"):format(countLuckyArrows())
+				end)
+				task.wait(0.5)
+			end
+		end)
+	end
+
+	function NoRender3D.set(on)
+		on = on == true
+		if on == NoRender3D.enabled then return end
+		NoRender3D.enabled = on
+		if on then
+			NoRender3D.build()
+			NoRender3D.apply()
+			NoRender3D.startLoop()
+			notify("", "3D rendering disabled. Screen is now black (AFK mode).", 3)
+		else
+			NoRender3D.revert()
+			if NoRender3D.gui then pcall(function() NoRender3D.gui:Destroy() end) end
+			NoRender3D.gui = nil
+			NoRender3D.labels = nil
+			notify("", "3D rendering restored.", 3)
+		end
+	end
+
+	QuestRight:Toggle("Disable 3D rendering", false, function(state)
+		NoRender3D.set(state == true)
+	end, "Blacks out the screen and shows a small AFK status panel.", "monitor-off")
 
 	farmThrottledHeartbeat(function()
 		if not (FarmState.Active or noQuestKillEnabled or getgenv().__EldiabloAutoStwActive) then return end
