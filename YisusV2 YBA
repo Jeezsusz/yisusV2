@@ -8,7 +8,7 @@ local PhysicsService = game:GetService("PhysicsService")
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 local MethionSH_Env = type(getgenv) == "function" and getgenv() or _G
-local RELOAD_SCRIPT_RAW_URL = "https://raw.githubusercontent.com/Jeezsusz/yisusV2/9f829a7181802027194623c59505981516b02402/YisusV2%20YBA"
+local RELOAD_SCRIPT_RAW_URL = "https://raw.githubusercontent.com/Jeezsusz/yisusV2/refs/heads/main/YisusV2%20YBA"
 local MAIN_AUTOSTART = MethionSH_Env.__MethionSHAutoStart == true
 if MAIN_AUTOSTART then MethionSH_Env.__MethionSHAutoStart = nil end
 
