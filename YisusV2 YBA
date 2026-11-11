@@ -172,6 +172,30 @@ end)
 local AirflowCompat = {}
 local CompatWindow = nil
 
+-- Config persistence: Window:SaveConfig/LoadConfig only serialize elements that
+-- registered a Flag, so controls created without one can never be restored by
+-- the "Load on startup" config system. Auto-assign a stable flag to anything the
+-- script builds without an explicit one.
+local function sanitizeFlagKey(value)
+    local key = tostring(value or ""):gsub("[^%w]+", "_")
+    key = key:gsub("^_+", ""):gsub("_+$", "")
+    if #key == 0 then key = "Element" end
+    if #key > 48 then key = key:sub(1, 48) end
+    return key
+end
+
+local function autoConfigFlag(kind, title)
+    local base = "YV2_" .. sanitizeFlagKey(kind) .. "_" .. sanitizeFlagKey(title)
+    local flags = type(AirflowLibrary) == "table" and type(AirflowLibrary.Flags) == "table" and AirflowLibrary.Flags or {}
+    local name = base
+    local index = 2
+    while flags[name] ~= nil do
+        name = base .. "_" .. index
+        index = index + 1
+    end
+    return name
+end
+
 local function adaptTab(rawTab)
     local tab = {}
 
@@ -233,7 +257,7 @@ local function adaptTab(rawTab)
             Name = config.Title or config.Name or "Toggle",
             Desc = config.Desc or "",
             Default = config.Value == true,
-            Flag = config.Flag,
+            Flag = config.Flag or autoConfigFlag("Toggle", config.Title or config.Name or "Toggle"),
             Locked = config.Locked == true,
             LockedReason = config.LockedReason or "Premium",
             Callback = config.Callback,
@@ -250,6 +274,7 @@ local function adaptTab(rawTab)
             Options = config.Values or config.Options or {},
             Default = config.Value ~= nil and config.Value or config.Default,
             Multi = config.Multi == true,
+            Flag = config.Flag or autoConfigFlag("Dropdown", config.Title or config.Name or "Dropdown"),
             Callback = config.Callback,
         })
 
@@ -311,6 +336,7 @@ local function adaptTab(rawTab)
             Step = config.Step or 1,
             Default = range.Default or config.Default or range.Min or config.Min or 0,
             Suffix = config.Suffix,
+            Flag = config.Flag or autoConfigFlag("Slider", config.Title or config.Name or "Slider"),
             Callback = config.Callback,
         })
     end
@@ -321,7 +347,7 @@ local function adaptTab(rawTab)
             Name = config.Title or config.Name or "Color",
             Desc = config.Desc or "",
             Default = config.Value or config.Default or Color3.new(1, 1, 1),
-            Flag = config.Flag,
+            Flag = config.Flag or autoConfigFlag("ColorPicker", config.Title or config.Name or "Color"),
             Callback = config.Callback,
         })
     end
@@ -344,6 +370,7 @@ local function adaptTab(rawTab)
             Desc = config.Desc or "",
             Placeholder = config.Placeholder or "",
             Default = config.Value ~= nil and config.Value or config.Default or "",
+            Flag = config.Flag or autoConfigFlag("Input", config.Title or config.Name or "Input"),
             Callback = config.Callback,
         })
     end
@@ -13806,6 +13833,19 @@ Loops.playerESP()
 Loops.spectate()
 Loops.playerInfo()
 Loops.counter()
+
+-- Second-chance config autoload: the library's own "Load on startup" runs one
+-- second after the window intro, which can fire before every control exists.
+-- Re-apply the selected config once all elements are built; Set() ignores
+-- values that already match, so this is a no-op for anything already loaded.
+task.delay(3, function()
+    pcall(function()
+        local raw = CompatWindow and CompatWindow.Raw
+        if raw and raw._autoLoad and not raw._destroyed and type(raw.LoadConfig) == "function" then
+            raw:LoadConfig(raw.ConfigName)
+        end
+    end)
+end)
 
 print("[METHION] Methion v2 loaded")
 
